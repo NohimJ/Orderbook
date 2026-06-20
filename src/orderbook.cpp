@@ -56,14 +56,19 @@ Trades Orderbook::MatchOrders()
             bid->Fill(quantity);
             ask->Fill(quantity);
 
+            UpdateLevelData(bid->GetPrice(), quantity, LevelData::Action::Match);
+            UpdateLevelData(ask->GetPrice(), quantity, LevelData::Action::Match);
+
             if (bid->isFilled())
             {
+                UpdateLevelData(bid->GetPrice(), 0, LevelData::Action::Remove);
                 bids.pop_front();
                 orders_.erase(bid->GetOrderId());
             }
 
             if (ask->isFilled())
             {
+                UpdateLevelData(ask->GetPrice(), 0, LevelData::Action::Remove);
                 asks.pop_front();
                 orders_.erase(ask->GetOrderId());
             }
@@ -130,6 +135,7 @@ Trades Orderbook::AddOrder(OrderPointer order)
     }
 
     orders_.insert({ order->GetOrderId(), OrderEntry{ order, iterator } });
+    UpdateLevelData(order->GetPrice(), order->GetRemainingQuantity(), LevelData::Action::Add);
     return MatchOrders();
 }
 
@@ -156,6 +162,7 @@ void Orderbook::CancelOrder(OrderId orderId)
         if (orders.empty())
             bids_.erase(price);
     }
+    UpdateLevelData(order->GetPrice(), order->GetRemainingQuantity(), LevelData::Action::Remove);
     orders_.erase(orderId);
 }
 
@@ -164,10 +171,7 @@ Trades Orderbook::MatchOrder(ModifyOrder order)
     if (orders_.find(order.GetOrderId()) == orders_.end())
         return { };
 
-    // Copy the existing order type out by value BEFORE cancelling.
-    // CancelOrder erases the entry from orders_, which would leave a
-    // structured-binding reference into that entry dangling if we tried
-    // to read from it afterward.
+    
     const auto existingOrderType = orders_.at(order.GetOrderId()).order_->GetOrderType();
     CancelOrder(order.GetOrderId());
     return AddOrder(order.ToOrderPointer(existingOrderType));
@@ -195,4 +199,28 @@ OrderbookLevelInfos Orderbook::GetOrderInfos() const
         askInfos.push_back(CreateLevelInfos(it->first, it->second));
 
     return OrderbookLevelInfos{ bidInfos, askInfos };
+}
+
+void Orderbook::UpdateLevelData(Price price, Quantity quantity, LevelData::Action action)
+{
+        auto& data = data_[price];
+
+        switch (action)
+    {
+        case LevelData::Action::Add:
+            data.count_ += 1;
+            data.quantity_ += quantity; //quantity gets added by how much new order bought
+            break;
+        case LevelData::Action::Remove:
+            data.count_ -= 1;
+            data.quantity_ -= quantity;
+            break;
+        case LevelData::Action::Match:
+            data.quantity_ -= quantity;
+            break;
+    }     
+
+    if (data.quantity_ == 0 && data.count_ == 0)
+        data_.erase(price);
+
 }

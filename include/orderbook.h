@@ -13,12 +13,26 @@ class Orderbook
 {
 private:
 
+    struct LevelData
+    {
+        Quantity quantity_{ };
+        Quantity count_{ };
+
+        enum class Action
+        {
+            Add,
+            Remove,
+            Match,
+        };
+    };
+
     struct OrderEntry
     {
         OrderPointer order_{ nullptr };
         OrderPointers::iterator location_;
     };
 
+    std::unordered_map<Price, LevelData> data_;
     std::map<Price, OrderPointers, std::greater<Price>> bids_;
     std::map<Price, OrderPointers, std::less<Price>> asks_;
     std::unordered_map<OrderId, OrderEntry> orders_;
@@ -41,4 +55,5 @@ public:
 
     std::size_t Size() const;
     OrderbookLevelInfos GetOrderInfos() const;
+    void UpdateLevelData(Price price, Quantity quantity, LevelData::Action action);
 };
