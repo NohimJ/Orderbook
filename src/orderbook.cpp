@@ -56,26 +56,34 @@ Trades Orderbook::MatchOrders()
             bid->Fill(quantity);
             ask->Fill(quantity);
 
-            UpdateLevelData(bid->GetPrice(), quantity, LevelData::Action::Match);
-            UpdateLevelData(ask->GetPrice(), quantity, LevelData::Action::Match);
+            // Capture everything needed for the trade record now, before either
+            // order is potentially popped from its list below — pop_front
+            // invalidates bid/ask, so reading from them afterward is a use-after-free.
+            auto bidOrderId = bid->GetOrderId();
+            auto bidPriceForTrade = bid->GetPrice();
+            auto askOrderId = ask->GetOrderId();
+            auto askPriceForTrade = ask->GetPrice();
+
+            UpdateLevelData(bidPriceForTrade, quantity, LevelData::Action::Match);
+            UpdateLevelData(askPriceForTrade, quantity, LevelData::Action::Match);
 
             if (bid->isFilled())
             {
-                UpdateLevelData(bid->GetPrice(), 0, LevelData::Action::Remove);
+                UpdateLevelData(bidPriceForTrade, 0, LevelData::Action::Remove);
                 bids.pop_front();
-                orders_.erase(bid->GetOrderId());
+                orders_.erase(bidOrderId);
             }
 
             if (ask->isFilled())
             {
-                UpdateLevelData(ask->GetPrice(), 0, LevelData::Action::Remove);
+                UpdateLevelData(askPriceForTrade, 0, LevelData::Action::Remove);
                 asks.pop_front();
-                orders_.erase(ask->GetOrderId());
+                orders_.erase(askOrderId);
             }
 
             trades.push_back(Trade{
-                TradeInfo{ bid->GetOrderId(), bid->GetPrice(), quantity },
-                TradeInfo{ ask->GetOrderId(), ask->GetPrice(), quantity }
+                TradeInfo{ bidOrderId, bidPriceForTrade, quantity },
+                TradeInfo{ askOrderId, askPriceForTrade, quantity }
             });
         }
 
@@ -113,10 +121,30 @@ Trades Orderbook::MatchOrders()
 
 Trades Orderbook::AddOrder(OrderPointer order)
 {
+    if (order->GetOrderType() == OrderType::Market)
+        {
+        if (order->GetSide() == Side::Buy && !asks_.empty())
+        {
+            const auto& [worstAsk, _] = *asks_.rbegin();        //fills market order with worst ask (i.e highest asking price)
+            order->ToGoodTillCancel(worstAsk);
+        }
+        else if (order->GetSide() == Side::Sell && !bids_.empty())
+        {
+            const auto& [worstBid, _] = *bids_.rbegin();        //fills market order with worst bid (i.e lowest bidding price)
+            order->ToGoodTillCancel(worstBid);
+        }
+        else
+        {
+            return { };
+        }
+    }
     if (orders_.find(order->GetOrderId()) != orders_.end())
         return { };
 
     if (order->GetOrderType() == OrderType::FillAndKill && !CanMatch(order->GetSide(), order->GetPrice()))
+        return { };
+    
+    if (order->GetOrderType() == OrderType::FillOrKill && !CanFullyFill(order->GetSide(), order->GetPrice(), order->GetRemainingQuantity()))
         return { };
 
     OrderPointers::iterator iterator;
@@ -223,4 +251,45 @@ void Orderbook::UpdateLevelData(Price price, Quantity quantity, LevelData::Actio
     if (data.quantity_ == 0 && data.count_ == 0)
         data_.erase(price);
 
+}
+
+bool Orderbook::CanFullyFill(Side side, Price price, Quantity quantity) const
+{
+    if (!CanMatch(side, price))
+        return false;
+    if (side == Side::Buy)
+    {
+        Quantity totalAvailable = 0;
+
+        for (const auto& [levelPrice, levelOrders] : asks_)
+        {
+            if (levelPrice > price)
+                break; // no further levels can qualify, since asks_ is sorted ascending
+
+            totalAvailable += data_.at(levelPrice).quantity_;
+
+            if (totalAvailable >= quantity)
+                return true;
+        }
+
+        return false; // parsed through everything that qualifies
+    }
+    else
+    {
+        Quantity totalAvailable = 0;
+
+        for (const auto& [levelPrice, levelOrders] : bids_)
+        {
+            if (levelPrice < price)
+                break; // no further levels can qualify, since bids_ is sorted descending
+
+            totalAvailable += data_.at(levelPrice).quantity_;
+
+            if (totalAvailable >= quantity)
+                return true;
+        }
+
+        return false; // parsed through everything that qualifies
+
+    }
 }

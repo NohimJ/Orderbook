@@ -21,6 +21,10 @@ public:
         , remainingQuantity_{ quantity }
     { }
 
+    Order(OrderId orderId, Side side, Quantity quantity)
+    : Order(OrderType::Market, orderId, side, InvalidPrice, quantity)
+    { }
+
     OrderType GetOrderType() const { return orderType_; }
     OrderId GetOrderId() const { return orderId_; }
     Side GetSide() const { return side_; }
@@ -39,6 +43,11 @@ public:
             throw std::logic_error(oss.str());
         }
         remainingQuantity_ -= quantity;
+    }
+    void ToGoodTillCancel(Price price)
+    {
+        price_ = price;
+        orderType_ = OrderType::GoodTillCancel;
     }
 
 private:
