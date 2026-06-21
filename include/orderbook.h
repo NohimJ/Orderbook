@@ -2,6 +2,10 @@
 
 #include <map>
 #include <unordered_map>
+#include <thread>
+#include <mutex>
+#include <condition_variable>
+#include <atomic>
 
 #include "usings.h"
 #include "order.h"
@@ -12,6 +16,11 @@
 class Orderbook
 {
 private:
+
+    mutable std::mutex ordersMutex_;
+    std::thread ordersPruneThread_;
+    std::condition_variable shutdownConditionVariable_;
+    std::atomic<bool> shutdown_{ false };
 
     struct LevelData
     {
@@ -37,18 +46,22 @@ private:
     std::map<Price, OrderPointers, std::less<Price>> asks_;
     std::unordered_map<OrderId, OrderEntry> orders_;
 
+    void UpdateLevelData(Price price, Quantity quantity, LevelData::Action action);
     bool CanMatch(Side side, Price price) const;
     bool CanFullyFill(Side side, Price price, Quantity quantity) const;
+    void PruneGoodForDayOrders();
+    void CancelOrderInternal(OrderId orderId);
+    Trades AddOrderInternal(OrderPointer order);
     Trades MatchOrders();
 
 public:
 
-    Orderbook() = default;
+    Orderbook();
     Orderbook(const Orderbook&) = delete;
     Orderbook& operator=(const Orderbook&) = delete;
     Orderbook(Orderbook&&) = delete;
     Orderbook& operator=(Orderbook&&) = delete;
-    ~Orderbook() = default;
+    ~Orderbook();
 
     Trades AddOrder(OrderPointer order);
     void CancelOrder(OrderId orderId);
@@ -56,5 +69,5 @@ public:
 
     std::size_t Size() const;
     OrderbookLevelInfos GetOrderInfos() const;
-    void UpdateLevelData(Price price, Quantity quantity, LevelData::Action action);
+    
 };

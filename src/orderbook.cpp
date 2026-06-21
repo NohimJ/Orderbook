@@ -3,6 +3,60 @@
 
 #include "orderbook.h"
 
+Orderbook::Orderbook()
+    : ordersPruneThread_{ [this] { PruneGoodForDayOrders(); } }
+{ }
+
+Orderbook::~Orderbook()
+{
+    shutdown_.store(true, std::memory_order_release);
+    shutdownConditionVariable_.notify_one();
+    ordersPruneThread_.join();
+}
+
+void Orderbook::PruneGoodForDayOrders()
+{
+    using namespace std::chrono;
+
+    while (true)
+    {
+        const auto end = []
+        {
+            const auto now = system_clock::now();
+            const auto rawTime = system_clock::to_time_t(now);
+            std::tm timeInfo{};
+            localtime_r(&rawTime, &timeInfo);
+
+            timeInfo.tm_hour = 0;
+            timeInfo.tm_min = 0;
+            timeInfo.tm_sec = 0;
+            timeInfo.tm_mday += 1;
+
+            return system_clock::from_time_t(std::mktime(&timeInfo));
+        }();
+
+        std::unique_lock ordersLock{ ordersMutex_ };
+
+        if (shutdownConditionVariable_.wait_until(ordersLock, end, [this] { return shutdown_.load(std::memory_order_acquire); }))
+        {
+            return;
+        }
+
+        // reached end-of-day, not shutdown — proceed with pruning
+        std::vector<OrderId> orderIds;
+
+        for (const auto& [_, entry] : orders_)
+        {
+            const auto& order = entry.order_;
+            if (order->GetOrderType() == OrderType::GoodForDay)
+                orderIds.push_back(order->GetOrderId());
+        }
+
+        for (const auto& orderId : orderIds)
+            CancelOrderInternal(orderId);
+    }
+}
+
 bool Orderbook::CanMatch(Side side, Price price) const
 {
     if (side == Side::Buy)
@@ -102,7 +156,7 @@ Trades Orderbook::MatchOrders()
         {
             auto& order = bids.front();
             if (order->GetOrderType() == OrderType::FillAndKill)
-                CancelOrder(order->GetOrderId());
+                CancelOrderInternal(order->GetOrderId());
         }
     }
     if (!asks_.empty())
@@ -112,15 +166,16 @@ Trades Orderbook::MatchOrders()
         {
             auto& order = asks.front();
             if (order->GetOrderType() == OrderType::FillAndKill)
-                CancelOrder(order->GetOrderId());
+                CancelOrderInternal(order->GetOrderId());
         }
     }
 
     return trades;
 }
 
-Trades Orderbook::AddOrder(OrderPointer order)
+Trades Orderbook::AddOrderInternal(OrderPointer order)      //internals dont contain locks to prevent unncesary locking twice
 {
+
     if (order->GetOrderType() == OrderType::Market)
         {
         if (order->GetSide() == Side::Buy && !asks_.empty())
@@ -167,7 +222,13 @@ Trades Orderbook::AddOrder(OrderPointer order)
     return MatchOrders();
 }
 
-void Orderbook::CancelOrder(OrderId orderId)
+Trades Orderbook::AddOrder(OrderPointer order)
+{
+    std::scoped_lock ordersLock{ ordersMutex_ };
+    return AddOrderInternal(order);
+}
+
+void Orderbook::CancelOrderInternal(OrderId orderId)
 {
     if (orders_.find(orderId) == orders_.end())
         return;
@@ -196,19 +257,32 @@ void Orderbook::CancelOrder(OrderId orderId)
 
 Trades Orderbook::MatchOrder(ModifyOrder order)
 {
+    std::scoped_lock ordersLock{ ordersMutex_ };
+
     if (orders_.find(order.GetOrderId()) == orders_.end())
         return { };
 
     
     const auto existingOrderType = orders_.at(order.GetOrderId()).order_->GetOrderType();
-    CancelOrder(order.GetOrderId());
-    return AddOrder(order.ToOrderPointer(existingOrderType));
+    CancelOrderInternal(order.GetOrderId());
+    return AddOrderInternal(order.ToOrderPointer(existingOrderType));
 }
 
-std::size_t Orderbook::Size() const { return orders_.size(); }
+void Orderbook::CancelOrder(OrderId orderId)
+{
+    std::scoped_lock ordersLock{ ordersMutex_ };
+    CancelOrderInternal(orderId);
+}
+
+std::size_t Orderbook::Size() const 
+{ 
+    std::scoped_lock ordersLock{ ordersMutex_ };
+    return orders_.size(); 
+}
 
 OrderbookLevelInfos Orderbook::GetOrderInfos() const
 {
+    std::scoped_lock ordersLock{ ordersMutex_ };
     LevelInfos bidInfos, askInfos;
     bidInfos.reserve(orders_.size());
     askInfos.reserve(orders_.size());
