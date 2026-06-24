@@ -1,12 +1,20 @@
 #include <iostream>
-
+#include <chrono>
+#include "Benchmark.cpp"
 #include "orderbook.h"
 
 int main()
 {
     Orderbook orderbook;
-
-    // Two resting asks: 5 units @ 100, 5 units @ 105
+    
+    AddOrdersWorker(orderbook, 1, 4);
+    
+    
+    
+    
+    
+    /*
+        // Two resting asks: 5 units @ 100, 5 units @ 105
     orderbook.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 1, Side::Sell, 100, 5));
     orderbook.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, 2, Side::Sell, 105, 5));
 
@@ -15,7 +23,7 @@ int main()
 
     std::cout << "Trades: " << trades.size() << std::endl;       // expect 2 (one trade per price level consumed)
     std::cout << "Book size: " << orderbook.Size() << std::endl; // expect 1 (2 remaining units resting at 105)
-   
+   */
    
     /*
    Orderbook orderbook;
