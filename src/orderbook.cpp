@@ -208,13 +208,13 @@ Trades Orderbook::AddOrderInternal(OrderPointer order)      //internals dont con
     {
         auto& orders = bids_[order->GetPrice()];
         orders.push_back(order);
-        iterator = std::next(orders.begin(), orders.size() - 1);
+        iterator = std::prev(orders.end());
     }
     else
     {
         auto& orders = asks_[order->GetPrice()];
         orders.push_back(order);
-        iterator = std::next(orders.begin(), orders.size() - 1);
+        iterator = std::prev(orders.end());
     }
 
     orders_.insert({ order->GetOrderId(), OrderEntry{ order, iterator } });

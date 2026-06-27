@@ -55,3 +55,22 @@ TEST(OrderbookTests, GoodForDay_RestsInBookLikeGoodTillCancel)
 
     EXPECT_EQ(orderbook.Size(), 1);
 }
+
+TEST(OrderbookTests, ManyOrdersAtSamePriceLevel_AllCancellable)
+{
+    Orderbook orderbook;
+
+    const int numOrders = 1000;
+    for (int i = 0; i < numOrders; i++)
+        orderbook.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, i, Side::Buy, 100, 10));
+
+    EXPECT_EQ(orderbook.Size(), numOrders);
+
+    // Cancel them all — if the iterator each order received during insertion
+    // were wrong, this would erase the wrong list nodes, corrupt the list,
+    // or crash, rather than cleanly emptying the book.
+    for (int i = 0; i < numOrders; i++)
+        orderbook.CancelOrder(i);
+
+    EXPECT_EQ(orderbook.Size(), 0);
+}
