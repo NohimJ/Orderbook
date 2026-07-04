@@ -18,7 +18,20 @@ A limit order book matching engine in C++, supporting multiple order types, leve
 
 - **`LevelData`** (`quantity_`, `count_`) is maintained per price level in `data_`, updated incrementally on every add/remove/match via `UpdateLevelData`. This is what makes `CanFullyFill` O(price levels touched) instead of O(orders at every level). It reads precomputed totals rather than summing every order's remaining quantity on each check.
 
-- **`std::shared_ptr<Order>`** for order ownership, since the same order is referenced from both a price-level list and the id lookup map.
+- **`std::unique_ptr<Order>`** for order ownership (price-level lists hold the actual objects), with raw pointers stored in the id lookup map. This eliminates atomic refcount overhead on every add/remove in the hot path. Atomic increments/decrements on `shared_ptr` were measurable contention, especially under multi-threaded insertion. Raw pointers are safe here because the book is the sole owner; secondary lookups only need to dereference, not extend lifetime.
+
+## Performance
+
+### Atomic refcount elimination: unique_ptr vs shared_ptr
+
+Replaced `shared_ptr<Order>` with `unique_ptr<Order>` + raw pointer lookups, eliminating atomic refcount ops on every order add/cancel.
+
+| Metric | shared_ptr | unique_ptr | Improvement |
+|---|---|---|---|
+| ns/order | 1273 | 1246 | +2.1% |
+| orders/sec (4 threads) | 785k | 803k | +2.3% |
+
+### Iterator bug fix: O(n²) → O(1)
 
 ## Concurrency Usage
 
