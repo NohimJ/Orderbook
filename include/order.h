@@ -59,8 +59,6 @@ private:
     Quantity remainingQuantity_;
 };
 
-// Orders are stored via shared_ptr since copying a large Order is expensive
-// and the same order needs to be referenced from multiple containers
-// (the price-level map and the orderId lookup map).
-using OrderPointer = std::shared_ptr<Order>;
+// order.h
+using OrderPointer = std::unique_ptr<Order>;
 using OrderPointers = std::list<OrderPointer>;

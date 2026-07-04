@@ -23,8 +23,9 @@ public:
     // the type as a parameter to future-proof against new order types.
     OrderPointer ToOrderPointer(OrderType type) const
     {
-        return std::make_shared<Order>(type, GetOrderId(), GetSide(), GetPrice(), GetQuantity());
+        return std::make_unique<Order>(type, GetOrderId(), GetSide(), GetPrice(), GetQuantity());
     }
+
 
 private:
     OrderId orderId_;

@@ -173,7 +173,7 @@ Trades Orderbook::MatchOrders()
     return trades;
 }
 
-Trades Orderbook::AddOrderInternal(OrderPointer order)      //internals dont contain locks to prevent unncesary locking twice
+Trades Orderbook::AddOrderInternal(OrderPointer&& order)      //internals dont contain locks to prevent unncesary locking twice
 {
 
     if (order->GetOrderType() == OrderType::Market)
@@ -207,25 +207,26 @@ Trades Orderbook::AddOrderInternal(OrderPointer order)      //internals dont con
     if (order->GetSide() == Side::Buy)
     {
         auto& orders = bids_[order->GetPrice()];
-        orders.push_back(order);
+        orders.push_back(std::move(order));
         iterator = std::prev(orders.end());
     }
     else
     {
         auto& orders = asks_[order->GetPrice()];
-        orders.push_back(order);
+        orders.push_back(std::move(order));
         iterator = std::prev(orders.end());
     }
 
-    orders_.insert({ order->GetOrderId(), OrderEntry{ order, iterator } });
-    UpdateLevelData(order->GetPrice(), order->GetRemainingQuantity(), LevelData::Action::Add);
+    Order* rawPtr = iterator->get();
+    orders_.insert({ rawPtr->GetOrderId(), OrderEntry{ rawPtr, iterator } });
+    UpdateLevelData(rawPtr->GetPrice(), rawPtr->GetRemainingQuantity(), LevelData::Action::Add);
     return MatchOrders();
 }
 
 Trades Orderbook::AddOrder(OrderPointer order)
 {
     std::scoped_lock ordersLock{ ordersMutex_ };
-    return AddOrderInternal(order);
+    return AddOrderInternal(std::move(order));
 }
 
 void Orderbook::CancelOrderInternal(OrderId orderId)

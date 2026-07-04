@@ -9,6 +9,6 @@ void AddOrdersWorker(Orderbook& orderbook, OrderId startId, int count)
     for (int i = 0; i < count; i++)
     {
         OrderId id = startId + i;
-        orderbook.AddOrder(std::make_shared<Order>(OrderType::GoodTillCancel, id, Side::Buy, 100, 10));
+        orderbook.AddOrder(std::make_unique<Order>(OrderType::GoodTillCancel, id, Side::Buy, 100, 10));
     }
 }

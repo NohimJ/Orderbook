@@ -37,7 +37,7 @@ private:
 
     struct OrderEntry
     {
-        OrderPointer order_{ nullptr };
+        Order* order_{ nullptr };
         OrderPointers::iterator location_;
     };
 
@@ -51,7 +51,7 @@ private:
     bool CanFullyFill(Side side, Price price, Quantity quantity) const;
     void PruneGoodForDayOrders();
     void CancelOrderInternal(OrderId orderId);
-    Trades AddOrderInternal(OrderPointer order);
+    Trades AddOrderInternal(OrderPointer&& order);
     Trades MatchOrders();
 
 public:
