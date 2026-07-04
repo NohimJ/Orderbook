@@ -66,6 +66,16 @@ iterator = std::prev(orders.end());   // O(1)
 
 ~31x faster at 80k orders. This bug was invisible at small and unrealistic amounts and only showed up under a realistic amount of orders which is why this benchmark exists alongside the test suite, not just to produce a number.
 
+### Latency percentiles (single-threaded, 100k orders)
+
+| Percentile | Latency |
+|---|---|
+| p50 | 666 ns |
+| p95 | 1041 ns |
+| p99 | 1125 ns |
+| max | 455 µs |
+
+Multi-threaded (4 threads, 400k orders): 2.5 µs avg due to mutex contention. Single-threaded shows what the lock-free path could achieve; contention on the mutex is now the primary bottleneck.
 ## Tests
 
 Built with GoogleTest via CMake's `FetchContent`. Covers each order type, a regression test for a use-after-free found and fixed in `MatchOrders` (reading from `bid`/`ask` references after `pop_front()` had already freed the node — found with AddressSanitizer), and a regression test for the `std::list` iterator fix above (cancelling 1,000 orders at one price level to confirm each order's stored iterator is still correct).
